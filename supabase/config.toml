@@ -1,1 +1,7 @@
 project_id = "xigfkqmihxmywheozdkl"
+
+[functions.extract-numbers]
+verify_jwt = false
+
+[functions.generate-messages]
+verify_jwt = false
