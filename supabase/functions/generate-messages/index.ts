@@ -12,13 +12,17 @@ serve(async (req) => {
   }
 
   try {
-    const { apiKey } = await req.json();
+    const { apiKey, templateId, templateText } = await req.json();
     
     if (!apiKey) {
       throw new Error('Gemini API key is required');
     }
 
-    console.log('Generating messages for unsent leads');
+    if (!templateText) {
+      throw new Error('Message template is required');
+    }
+
+    console.log('Generating messages for unsent leads with template:', templateId);
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -58,7 +62,10 @@ serve(async (req) => {
       try {
         const name = lead.name || 'there';
         
-        // Generate personalized message using Gemini
+        // Replace {name} placeholder in template
+        const baseMessage = templateText.replace(/\{name\}/g, name);
+        
+        // Generate varied message using Gemini to avoid spam detection
         const geminiResponse = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
           {
@@ -69,14 +76,22 @@ serve(async (req) => {
             body: JSON.stringify({
               contents: [{
                 parts: [{
-                  text: `Generate a friendly, personalized WhatsApp message for ${name} from Rahul at Masters Up. The message should:
-- Be warm and conversational
-- Mention Masters Up's new platform for Masters preparation
-- Invite them to check out mastersup.live
-- Keep it under 200 characters
-- Be professional yet approachable
+                  text: `Create a slight variation of this message to make it feel natural and avoid spam detection. Keep the core meaning and tone exactly the same, but vary:
+- Word choice (use synonyms)
+- Sentence structure slightly
+- Punctuation placement
+- Emoji placement (if any)
 
-Return ONLY the message text without any quotation marks or extra formatting.`
+DO NOT change:
+- The main message or intent
+- Links (keep them exactly as is)
+- The person's name
+- The overall length (keep it similar)
+
+Original message:
+${baseMessage}
+
+Return ONLY the varied message text without quotation marks, explanations, or extra formatting.`
                 }]
               }]
             })
@@ -89,8 +104,7 @@ Return ONLY the message text without any quotation marks or extra formatting.`
         }
 
         const geminiData = await geminiResponse.json();
-        const message = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 
-          `Hi ${name}, this is Rahul from Masters Up — we've just launched a new Masters preparation platform. Check mastersup.live to explore free resources!`;
+        const message = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || baseMessage;
 
         // Generate WhatsApp link
         const encodedMessage = encodeURIComponent(message);

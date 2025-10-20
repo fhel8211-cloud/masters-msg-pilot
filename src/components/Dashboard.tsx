@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { 
   Table, 
   TableBody, 
@@ -40,6 +41,7 @@ const Dashboard = () => {
   const [statusFilter, setStatusFilter] = useState<"all" | "sent" | "unsent">("all");
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState("promotional");
   const { toast } = useToast();
 
   const fetchLeads = async () => {
@@ -97,11 +99,28 @@ const Dashboard = () => {
       return;
     }
 
+    const templatesStr = localStorage.getItem('message_templates');
+    const templates = templatesStr ? JSON.parse(templatesStr) : [];
+    const template = templates.find((t: any) => t.id === selectedTemplate);
+
+    if (!template) {
+      toast({
+        title: "Template Missing",
+        description: "Please select a valid message template.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsGenerating(true);
 
     try {
       const { data, error } = await supabase.functions.invoke('generate-messages', {
-        body: { apiKey: geminiApiKey }
+        body: { 
+          apiKey: geminiApiKey,
+          templateId: selectedTemplate,
+          templateText: template.template
+        }
       });
 
       if (error) throw error;
@@ -240,42 +259,72 @@ const Dashboard = () => {
 
       {/* Controls */}
       <Card className="p-6">
-        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="flex flex-1 gap-2 w-full md:w-auto">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-              <Input
-                placeholder="Search by name or phone..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div className="flex flex-1 gap-2 w-full md:w-auto">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="Search by name or phone..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+                className="px-4 py-2 border border-border rounded-md bg-background"
+              >
+                <option value="all">All</option>
+                <option value="sent">Sent</option>
+                <option value="unsent">Unsent</option>
+              </select>
             </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="px-4 py-2 border border-border rounded-md bg-background"
-            >
-              <option value="all">All</option>
-              <option value="sent">Sent</option>
-              <option value="unsent">Unsent</option>
-            </select>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={fetchLeads}
+                size="sm"
+              >
+                <RefreshCcw className="w-4 h-4 mr-2" />
+                Refresh
+              </Button>
+              <Button
+                onClick={downloadCSV}
+                disabled={filteredLeads.length === 0}
+                size="sm"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </Button>
+            </div>
           </div>
 
-          <div className="flex gap-2">
+          {/* Message Template Selector */}
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end pt-4 border-t border-border">
+            <div className="flex-1 w-full space-y-2">
+              <Label htmlFor="template-select">Message Template</Label>
+              <select
+                id="template-select"
+                value={selectedTemplate}
+                onChange={(e) => setSelectedTemplate(e.target.value)}
+                className="w-full px-4 py-2 border border-border rounded-md bg-background"
+              >
+                {(() => {
+                  const templatesStr = localStorage.getItem('message_templates');
+                  const templates = templatesStr ? JSON.parse(templatesStr) : [];
+                  return templates.map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ));
+                })()}
+              </select>
+            </div>
             <Button
-              variant="outline"
-              onClick={fetchLeads}
-              size="sm"
-            >
-              <RefreshCcw className="w-4 h-4 mr-2" />
-              Refresh
-            </Button>
-            <Button
-              variant="outline"
               onClick={generateMessages}
               disabled={isGenerating || leads.length === 0}
-              size="sm"
+              className="w-full sm:w-auto"
             >
               {isGenerating ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -283,14 +332,6 @@ const Dashboard = () => {
                 <MessageCircle className="w-4 h-4 mr-2" />
               )}
               Generate Messages
-            </Button>
-            <Button
-              onClick={downloadCSV}
-              disabled={filteredLeads.length === 0}
-              size="sm"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export CSV
             </Button>
           </div>
         </div>
