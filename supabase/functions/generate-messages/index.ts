@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { apiKey, templateId, templateText } = await req.json();
+    const { apiKey, templateId, templateText, isCustom } = await req.json();
     
     if (!apiKey) {
       throw new Error('Gemini API key is required');
@@ -22,7 +22,7 @@ serve(async (req) => {
       throw new Error('Message template is required');
     }
 
-    console.log('Generating messages for unsent leads with template:', templateId);
+    console.log('Generating messages with template:', templateId, 'isCustom:', isCustom);
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -65,18 +65,27 @@ serve(async (req) => {
         // Replace {name} placeholder in template
         const baseMessage = templateText.replace(/\{name\}/g, name);
         
-        // Generate varied message using Gemini to avoid spam detection
-        const geminiResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              contents: [{
-                parts: [{
-                  text: `Create a slight variation of this message to make it feel natural and avoid spam detection. Keep the core meaning and tone exactly the same, but vary:
+        // Choose model based on whether it's custom or template
+        const model = isCustom ? 'gemini-2.0-flash-thinking-exp' : 'gemini-2.0-flash-exp';
+        
+        // Generate varied message using Gemini
+        const prompt = isCustom 
+          ? `You are a creative message writer. Create a unique variation of the following message while keeping the EXACT same tone, style, emojis, and vibe. Make it feel natural and personal to avoid spam detection.
+
+Important rules:
+- Keep the same casual/fun/serious tone as the original
+- Use similar emojis but you can rearrange them slightly
+- Keep the same line breaks and structure
+- Vary word choices and sentence structure slightly
+- Keep the same overall length
+- If there are links, keep them EXACTLY as is
+- DO NOT change the core message or meaning
+
+Original message:
+${baseMessage}
+
+Return ONLY the varied message text without quotation marks, explanations, or any extra formatting.`
+          : `Create a slight variation of this message to make it feel natural and avoid spam detection. Keep the core meaning and tone exactly the same, but vary:
 - Word choice (use synonyms)
 - Sentence structure slightly
 - Punctuation placement
@@ -91,7 +100,19 @@ DO NOT change:
 Original message:
 ${baseMessage}
 
-Return ONLY the varied message text without quotation marks, explanations, or extra formatting.`
+Return ONLY the varied message text without quotation marks, explanations, or extra formatting.`;
+
+        const geminiResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: prompt
                 }]
               }]
             })

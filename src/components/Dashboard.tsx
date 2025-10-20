@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   Table, 
   TableBody, 
@@ -42,6 +43,8 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState("promotional");
+  const [customMessage, setCustomMessage] = useState("");
+  const [useCustomMessage, setUseCustomMessage] = useState(false);
   const { toast } = useToast();
 
   const fetchLeads = async () => {
@@ -99,17 +102,32 @@ const Dashboard = () => {
       return;
     }
 
-    const templatesStr = localStorage.getItem('message_templates');
-    const templates = templatesStr ? JSON.parse(templatesStr) : [];
-    const template = templates.find((t: any) => t.id === selectedTemplate);
+    let messageTemplate = "";
+    
+    if (useCustomMessage) {
+      if (!customMessage.trim()) {
+        toast({
+          title: "Custom Message Required",
+          description: "Please enter a custom message to generate variations.",
+          variant: "destructive",
+        });
+        return;
+      }
+      messageTemplate = customMessage;
+    } else {
+      const templatesStr = localStorage.getItem('message_templates');
+      const templates = templatesStr ? JSON.parse(templatesStr) : [];
+      const template = templates.find((t: any) => t.id === selectedTemplate);
 
-    if (!template) {
-      toast({
-        title: "Template Missing",
-        description: "Please select a valid message template.",
-        variant: "destructive",
-      });
-      return;
+      if (!template) {
+        toast({
+          title: "Template Missing",
+          description: "Please select a valid message template.",
+          variant: "destructive",
+        });
+        return;
+      }
+      messageTemplate = template.template;
     }
 
     setIsGenerating(true);
@@ -118,8 +136,9 @@ const Dashboard = () => {
       const { data, error } = await supabase.functions.invoke('generate-messages', {
         body: { 
           apiKey: geminiApiKey,
-          templateId: selectedTemplate,
-          templateText: template.template
+          templateId: useCustomMessage ? 'custom' : selectedTemplate,
+          templateText: messageTemplate,
+          isCustom: useCustomMessage
         }
       });
 
@@ -303,36 +322,92 @@ const Dashboard = () => {
           </div>
 
           {/* Message Template Selector */}
-          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end pt-4 border-t border-border">
-            <div className="flex-1 w-full space-y-2">
-              <Label htmlFor="template-select">Message Template</Label>
-              <select
-                id="template-select"
-                value={selectedTemplate}
-                onChange={(e) => setSelectedTemplate(e.target.value)}
-                className="w-full px-4 py-2 border border-border rounded-md bg-background"
-              >
-                {(() => {
-                  const templatesStr = localStorage.getItem('message_templates');
-                  const templates = templatesStr ? JSON.parse(templatesStr) : [];
-                  return templates.map((t: any) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ));
-                })()}
-              </select>
+          <div className="space-y-4 pt-4 border-t border-border">
+            <div className="flex items-center gap-4">
+              <Label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="messageType"
+                  checked={!useCustomMessage}
+                  onChange={() => setUseCustomMessage(false)}
+                  className="w-4 h-4 text-primary"
+                />
+                <span>Use Template</span>
+              </Label>
+              <Label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="messageType"
+                  checked={useCustomMessage}
+                  onChange={() => setUseCustomMessage(true)}
+                  className="w-4 h-4 text-primary"
+                />
+                <span>Custom Message</span>
+              </Label>
             </div>
-            <Button
-              onClick={generateMessages}
-              disabled={isGenerating || leads.length === 0}
-              className="w-full sm:w-auto"
-            >
-              {isGenerating ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <MessageCircle className="w-4 h-4 mr-2" />
-              )}
-              Generate Messages
-            </Button>
+
+            {!useCustomMessage ? (
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+                <div className="flex-1 w-full space-y-2">
+                  <Label htmlFor="template-select">Message Template</Label>
+                  <select
+                    id="template-select"
+                    value={selectedTemplate}
+                    onChange={(e) => setSelectedTemplate(e.target.value)}
+                    className="w-full px-4 py-2 border border-border rounded-md bg-background"
+                  >
+                    {(() => {
+                      const templatesStr = localStorage.getItem('message_templates');
+                      const templates = templatesStr ? JSON.parse(templatesStr) : [];
+                      return templates.map((t: any) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ));
+                    })()}
+                  </select>
+                </div>
+                <Button
+                  onClick={generateMessages}
+                  disabled={isGenerating || leads.length === 0}
+                  className="w-full sm:w-auto"
+                >
+                  {isGenerating ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                  )}
+                  Generate Messages
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="custom-message">Your Custom Message</Label>
+                  <Textarea
+                    id="custom-message"
+                    placeholder="Happy Diwali student's🪔 &#10;Never think you are alone 👁&#10;Masters Up promotion messages always there🫂&#10;To irritate you buddy 😛"
+                    value={customMessage}
+                    onChange={(e) => setCustomMessage(e.target.value)}
+                    rows={6}
+                    className="resize-none font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    AI will create unique variations of this message for each lead using Gemini 2.5 Pro, keeping the same tone and style.
+                  </p>
+                </div>
+                <Button
+                  onClick={generateMessages}
+                  disabled={isGenerating || leads.length === 0 || !customMessage.trim()}
+                  className="w-full"
+                >
+                  {isGenerating ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                  )}
+                  Generate Personalized Messages
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </Card>
